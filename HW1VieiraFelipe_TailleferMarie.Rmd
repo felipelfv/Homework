@@ -1,0 +1,246 @@
+---
+title: "Principles of Statistical Data Analysis - Homework 1"
+author: "Felipe F. Vieira and Marie Taillefer"
+date: ''
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Install the below packages if needed (also latex for pdf knitting)
+# library(knitr)
+library(kableExtra)
+library(cowplot)
+library(ggplot2)
+```
+
+```{r data, include=FALSE}
+load("ants.RData") # Change path 
+```
+
+\vspace{-10truemm}
+
+# Question 1
+
+$\hspace{1cm}$ A few comments can be made based on the descriptive statistics. With respect to the distribution of ant abundance, the mean is higher than the median, which suggests that the observations are positively skewed, with a few values "pulling" the average. This is confirmed by the histogram and box-plot of abundance. Moreover, the relationship between mean and variance seems to follow an non-linear relationship, where increasing mean values are associated with increasing variance values. This is consistent with the given relationship $\text{Var}(Y) = \mu + \phi \mu^2$.
+
+$\hspace{1cm}$ With regards to the distribution of soil moisture, inspection of the minimum, maximum, and quartiles suggests that the distribution is somewhat evenly distributed across the observed range, with slightly more observations in the higher end of the range. This is also shown by the histogram and box-plot of moisture, and consistent with the median being slightly greater than the mean. Overall, descriptive statistics of soil moisture suggest a relatively symmetrical distribution across the observed range, but with a slight tendency toward higher moisture observations.
+
+```{r first question, echo=FALSE}
+summary_abundance <- summary(ants$abundance)
+summary_moisture <- summary(ants$moisture)
+sd_abundance <- round(sd(ants$abundance), 1)
+sd_moisture <- round(sd(ants$moisture), 1)
+var_abundance <- round(var(ants$abundance), 1)
+var_moisture <- round(var(ants$moisture), 1)
+
+stats_df <- data.frame(
+  Statistic = c("Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.", "Std. Dev.", "Variance"),
+  Abundance = round(c(
+    as.numeric(summary_abundance["Min."]), 
+    as.numeric(summary_abundance["1st Qu."]),
+    as.numeric(summary_abundance["Median"]),
+    as.numeric(summary_abundance["Mean"]),
+    as.numeric(summary_abundance["3rd Qu."]),
+    as.numeric(summary_abundance["Max."]),
+    sd_abundance,
+    var_abundance
+  ), 2),
+  Moisture = round(c(
+    as.numeric(summary_moisture["Min."]), 
+    as.numeric(summary_moisture["1st Qu."]),
+    as.numeric(summary_moisture["Median"]),
+    as.numeric(summary_moisture["Mean"]),
+    as.numeric(summary_moisture["3rd Qu."]),
+    as.numeric(summary_moisture["Max."]),
+    sd_moisture,
+    var_moisture
+  ), 2),
+  row.names = NULL 
+)
+
+kable(stats_df, caption = "Descriptive Statistics", row.names = FALSE)
+```
+
+$\hspace{0.05cm}$
+
+```{r plots, echo=FALSE, fig.align='center', fig.height=2.5}
+# Ant Abundance
+hist_abundance <- ggplot(ants, aes(x = abundance)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black") +
+  geom_density(alpha = .2, fill = "#FF6666") +
+  ggtitle("Histogram of Abundance") +
+  theme_minimal()
+
+box_abundance <- ggplot(ants, aes(x = "", y = abundance)) +
+  geom_boxplot(fill = "lightblue") +
+  ggtitle("Box Plot of Abundance") +
+  theme_minimal()
+
+# Soil Moisture
+hist_moisture <- ggplot(ants, aes(x = moisture)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "lightgreen", color = "black") +
+  geom_density(alpha = .2, fill = "#FF6666") +
+  ggtitle("Histogram of Soil Moisture") +
+  theme_minimal()
+
+box_moisture <- ggplot(ants, aes(x = "", y = moisture)) +
+  geom_boxplot(fill = "lightgreen") +
+  ggtitle("Box Plot of Soil Moisture") +
+  theme_minimal()
+
+combined_abundance <- plot_grid(hist_abundance, box_abundance, nrow = 1, labels = c("A", "B"))
+combined_moisture <- plot_grid(hist_moisture, box_moisture, nrow = 1, labels = c("A", "B"))
+final_plot <- plot_grid(combined_abundance, combined_moisture, ncol = 1); final_plot
+```
+
+```{r Variance - mean relationship, echo=FALSE, fig.height=3.5}
+# Bin the moisture data and calculate mean and variance of abundance within each bin
+ants$moisture_bin <- cut(ants$moisture, breaks = 10)  # Bin into 5 categories
+
+# Mean and variance by moisture bin
+mean_abundance <- tapply(ants$abundance, ants$moisture_bin, mean)
+variance_abundance <- tapply(ants$abundance, ants$moisture_bin, var)
+
+plot(mean_abundance, variance_abundance, ylab = "Variance of Abundance", xlab = "Mean Abundance")
+lines(lowess(mean_abundance, variance_abundance, f = 0.9), col = "blue", lwd = 2)
+
+```
+
+# Question 2
+
+The joint density function can be expressed as follows:
+
+$$
+p(y_i, x_i) = \left( \frac{ \Gamma\left( y_i + \frac{1}{\phi} \right) }{ \Gamma\left( \frac{1}{\phi} \right) y_i! } \left( \frac{1}{1 + \mu_i \phi} \right)^{\frac{1}{\phi}} \left( \frac{\mu_i \phi}{1 + \mu_i \phi} \right)^{y_i} \right) f(x_i)
+$$
+
+The $f(x)$ is arbitrarily chosen and not a function of the parameter of interest. Hence, for independently distributed observations, we have the following likelihood function:
+
+$$
+L(\phi, \beta_0, \beta_1) = \prod_{i=1}^n p(y_i, x_i) = \prod_{i=1}^n \left[ \frac{\Gamma\left( y_i + \dfrac{1}{\phi} \right)}{ \Gamma\left( \dfrac{1}{\phi} \right) y_i! } \left( \frac{1}{1 + \mu_i \phi} \right)^{\dfrac{1}{\phi}} \left( \frac{ \mu_i \phi }{1 + \mu_i \phi} \right)^{y_i} \right].
+$$
+
+The log-likelihood function:
+
+$$
+\ell(\phi, \beta_0, \beta_1) = \sum_{i=1}^{n} \left[ \ln \Gamma\left( y_i + \dfrac{1}{\phi} \right) - \ln \Gamma\left( \dfrac{1}{\phi} \right) - \ln y_i! - \dfrac{1}{\phi} \ln(1 + \mu_i \phi) + y_i \ln(\mu_i \phi) - y_i \ln(1 + \mu_i \phi) \right]
+$$
+
+where $\mu_i = E(Y_i \mid X_i) = \exp(\beta_0 + \beta_1 x_i)$
+
+# Question 3
+
+Then, we can compute the derivative of the log-likelihood with respect to $\beta_1$ as follows:
+
+$$
+\frac{\partial \ell}{\partial \beta_1} \propto \sum_{i=1}^{n} \left[ -\frac{1}{\phi} \cdot \frac{\partial}{\partial \beta_1} \ln\left(1 + \mu_i \phi\right) + y_i \cdot \frac{\partial}{\partial \beta_1} \ln\left(\mu_i \phi\right) - y_i \cdot \frac{\partial}{\partial \beta_1} \ln\left(1 + \mu_i \phi\right) \right] = 0.
+$$
+
+Obtaining the following estimating equation:
+
+$$
+\sum_{i=1}^{n} x_i \left( \dfrac{ y_i - \exp\left( \beta_0 + \beta_1 x_i \right) }{ 1 + \phi \exp\left( \beta_0 + \beta_1 x_i \right) } \right) = 0.
+$$
+
+# Question 4
+
+```{r likelihood numbers, echo=FALSE}
+# Parameter estimates
+beta0_hat <- 2.509067
+phi_hat <- 2.289377
+
+y <- as.numeric(ants$abundance)  
+x <- as.numeric(ants$moisture)
+```
+
+```{r likelihood}
+log_likelihood <- function(beta1, beta0, phi, y, x) {
+  mu <- exp(beta0 + beta1 * x)
+  #term1 <- lgamma(y + 1/phi); #term2 <- -lgamma(1/phi); #term3 <- -log(y!)
+  term4 <- -(1/phi) * log(1 + mu * phi)
+  term5 <- y * log(mu * phi)
+  term6 <- -y * log(1 + mu * phi)
+  ll <- sum(term4 + term5 + term6)
+  ll
+}
+beta1_points <- seq(-0.05, .5, length.out = 200) # Sequence of beta_1´s 
+loglik_points <- numeric(length(beta1_points)) 
+# Log-likelihood for each beta_1 value
+for (i in seq_along(beta1_points)) {
+  loglik_points[i] <- log_likelihood(beta1_points[i], beta0_hat, phi_hat, y, x)
+}
+
+```
+
+```{r plot likelihood, echo=FALSE, fig.height=3.5}
+plot(beta1_points, loglik_points, type = "l", lwd = 2,
+     xlab = expression(beta[1]), ylab = "Log-Likelihood",
+     main = "")
+# Add a vertical line at the estimated beta1 if known
+# abline(v = beta1_hat, col = "red", lty = 2)
+```
+
+# Question 5
+
+```{r MLE}
+beta1_initial <- 0 # Initial value
+
+discrepancy_function <- function(beta1) {
+  log_likelihood(beta1, beta0 = beta0_hat, phi = phi_hat, y = y, x = x)
+}
+
+optim_result <- optim(par = beta1_initial, fn = discrepancy_function, 
+                      method = "BFGS", control = list(fnscale = -1))
+beta1_hat <- optim_result$par
+```
+
+The obtained MLE of $\beta_1$ was: **0.108905**. As a sanity check, the obtained result was also compared to the result obtained from the `glm.nb` function in the MASS package (0.108904). The estimates were basically identical.
+
+```{r sanity check for MLE, echo=FALSE}
+###########################################################
+# Sanity check: MASS package
+library(MASS)
+# Negative binomial model using glm.nb
+model_nb <- glm.nb(y ~ x, data = ants)
+coefficients <- coef(model_nb)
+###########################################################
+```
+
+# Question 6
+
+```{r plug-in, echo=FALSE}
+mu <- exp(beta0_hat + beta1_hat * x)
+estimating_equation_values <- x * ((y - mu) / (1 + mu * phi_hat))
+estimating_equation_sum <- sum(estimating_equation_values)
+```
+
+We obtain the following: **-0.01720086**. This result is very close to 0. This is expected because, in the context of maximum likelihood estimation, the derivative of the likelihood function should be zero (or at least close enough). In fact, if one changes the scale of $\beta_{1}$ (i.e., $\beta_{1}$ / 100), the result is much closer to 0. Thus, we confirmed that the estimated $\beta_{1}$ was appropriately derived.
+
+# Question 7
+
+With the estimated parameters, we visualized the relationship between the mean and the variance. Indeed, it agrees with the data exploration as in question 1.
+
+```{r seven, echo=FALSE, fig.height=3.5}
+# Creating vectors to store means and variances
+mu_values <- numeric(length(x))
+var_values <- numeric(length(x))
+
+# Calculating and storing means and variances for each observation of x
+for (j in seq_along(x)) {
+  mu_values[j] <- exp(beta0_hat + beta1_hat*x[j])
+  var_values[j] <- mu_values[j] + phi_hat * mu_values[j]**2
+}
+
+# Ordering observations from smallest to greatest mu
+mu_var <- data.frame(mu_values, var_values)
+mu_var_ordered <- mu_var[order(mu_var$mu_values), ]
+
+# Plot the variance against the mean
+plot(mu_var_ordered$mu_values, mu_var_ordered$var_values, type = "l", lwd = 2,
+     xlab = "Mean", ylab = "Variance",
+     main = "")
+```
