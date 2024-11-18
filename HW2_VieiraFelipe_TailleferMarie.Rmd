@@ -1,0 +1,274 @@
+---
+title: "Principles of Statistical Data Analysis - Homework 2"
+author: "Felipe Fontana Vieira and Marie Taillefer (Group 6)"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(kableExtra)
+library(stats)
+library(coin)
+library(ggplot2)
+library(reshape2)
+library(rmutil)
+```
+
+## Question 1
+
+From the question 1, `x` and `y` should be the only arguments in the function. Hence, the self-made `median.text(x,y)` was the following:
+
+```{r question 1}
+N <- 1000L 
+
+median.test <- function(x, y) {
+  data <- c(x, y)
+  nx <- length(x)
+  ny <- length(y)
+  n <- nx + ny
+  # Observed difference in medians
+  obs_stat <- median(x) - median(y)
+  # Permutation test
+  statistic <- replicate(N, { # Here we have an approximation of the null. Not exact.
+    permuted_data <- sample(data)
+    x_perm <- permuted_data[1:nx]
+    y_perm <- permuted_data[(nx + 1):n]
+    statistic <- median(x_perm) - median(y_perm)
+    statistic
+  })
+  
+  p_value <- mean(abs(statistic) >= abs(obs_stat)) # Alternative is two-sided
+  p_value
+}
+```
+
+```{r example 1, include=FALSE, eval=FALSE}
+# Example for median.test(x,y)
+x <- rnorm(10, mean = 3, sd = 1)
+y <- rnorm(10, mean = 5, sd = 1)
+median.test(x,y)
+
+# Sanity checks: 
+# (i) Coin package function has a different underlying code 
+# (ii) Histogram of the null follows a normal as expected
+```
+
+## Question 2
+
+As per the wording in question 2, we followed the same set-up as discussed in page 28-29. The following code was generated:
+
+```{r question 2}
+p.t <- p.wmw <- p.m <- c()
+N <- 20
+delta <- sqrt(3)/2 # Delta based on the variance (given below) of the t-3 distribution
+for(i in 1:1000){
+  # `rt` distribution with df = 3, meaning t-3 distribution
+  Y1 <- rt(N, 3)
+  Y2 <- rt(N, 3) + delta # Simulating under the alternative and assuming location-shift
+  X <- factor(c(rep("A", N), rep("B", N)))
+  Y <- c(Y1, Y2)
+  # Permutation T Test
+  p.t[i] <- pvalue(oneway_test(Y ~ X, distribution = approximate(nresample=9999)))
+  # Permutation WMW Test
+  p.wmw[i] <- wilcox.test(Y1, Y2, exact = TRUE)$p.value
+  # Permutation Median Test
+  p.m[i] <- median.test(Y1, Y2)
+}
+
+mean(p.t < 0.05)
+mean(p.wmw < 0.05)
+mean(p.m < 0.05)
+```
+
+## Question 3
+
+For all distributions considered, we defined the effect size in terms of the variance of each distribution ($\sqrt(Var)/2$) as suggested in the notes. Two important comments should be made here: (i) the variance of the different distributions are not the same. Thus, the procedure performed here might not allow for a comparison about the absolute magnitude of the power (i.e., equal probability of correctly rejecting the null when the alternative holds) across distributions, as mentioned in the course notes; (ii) the variances were calculated based on the formulas shown in the Appendix. The values for certain parameters were arbitrary chosen. In the end, the ones that gave similar results as the notes were reported. 
+
+The graph obtained was the following:
+
+```{r question 3, echo=FALSE, include=FALSE}
+# Distribution functions and their variances (information from wikipedia)
+dist_funcs <- list(
+  exp = list(
+    dist_func = function(n) rexp(n),
+    variance = 1  # Var[Exp(1)] = 1 / lambda^2 = 1 (lambda = 1)
+  ),
+  t3 = list(
+    dist_func = function(n) rt(n, df = 3),
+    variance = 3  # Var[t3] = df / (df - 2) = 3 / (3 - 2) = 3
+  ),
+  laplace = list(
+    dist_func = function(n) rlaplace(n),
+    variance = 2  # Var[Laplace(0,1)] = 2 * scale^2 = 2 * 1^2 = 2
+  ),
+  t5 = list(
+    dist_func = function(n) rt(n, df = 5),
+    variance = 5 / 3  # Var[t5] = df / (df - 2) = 5 / (5 - 2) = 5/3
+  ),
+  logistic = list(
+    dist_func = function(n) rlogis(n),
+    variance = (pi^2) / 3  # Var[Logistic(0,1)] = (π^2 * scale^2) / 3 (scale=1)
+  ),
+  normal = list(
+    dist_func = function(n) rnorm(n),
+    variance = 1  # Var[N(0,1)] = 1
+  ),
+  uniform = list(
+    dist_func = function(n) runif(n),
+    variance = 1 / 12  # Var[Uniform(0,1)] = (b - a)^2 / 12 = (1 - 0)^2 / 12
+  )
+)
+
+simulation_power <- function(n, dist_func, variance, num_sim = 500L, dist_name = "") {
+  # Delta based on the variance of each distribution as suggested in the notes
+  delta <- sqrt(variance) / 2
+
+  p.medtest <- p.wmw <- p.t <- numeric(num_sim)
+  
+  for (i in 1:num_sim) {
+    # Data is generated based on the given distribution
+    Y1 <- dist_func(n)         
+    Y2 <- dist_func(n) + delta # Distribution-shift assumption 
+    Y <- c(Y1, Y2)
+    X <- factor(c(rep("A", n), rep("B", n)))
+    
+    # Permutation t-test
+    p.t[i] <- pvalue(oneway_test(Y ~ X, 
+                                 distribution = approximate(nresample = 9999)))
+    # Permutation median.test
+    p.medtest[i] <- median.test(Y1, Y2)
+    # Wilcoxon test
+    p.wmw[i] <- wilcox.test(Y1, Y2)$p.value
+  }
+  
+  # Power for each test (alpha = 0.05)
+  power <- c(mean(p.t < .05), mean(p.medtest < .05), mean(p.wmw < .05))
+  names(power) <- c("Permutation t-test", "Permutation median test", "Wilcoxon test")
+  power
+}
+
+# This next part computes the power for all distributions
+power_results_list <- list()
+
+for (dist_name in names(dist_funcs)) {
+  dist_info <- dist_funcs[[dist_name]]
+  dist_func <- dist_info$dist_func
+  variance <- dist_info$variance
+  
+  power <- simulation_power(n = 20, dist_func = dist_func, variance = variance, dist_name = dist_name)
+  power_results_list[[dist_name]] <- power
+}
+
+power_results <- do.call(rbind, power_results_list)
+power_results <- as.data.frame(power_results)
+```
+
+```{r question 3 plot, echo = FALSE}
+power_results$Distribution <- rownames(power_results)
+results_long <- melt(power_results, id.vars = "Distribution", variable.name = "Test", value.name = "Power")
+
+ggplot(results_long, aes(x = Distribution, y = Power, fill = Test)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  # facet_wrap(~ GroupSize) +  # Separate plots for each group size +    
+  labs(x = NULL, y = "Power (%)") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "top") + 
+  scale_fill_manual(values = c("black", "gray", "lightgrey")) + 
+  coord_flip()
+```
+
+## Question 4
+
+```{r question 4}
+simulation_type1 <- function(n, dist_func, num_sim = 1000) {
+
+  p.medtest <- p.wmw <- p.t <- c()
+  
+  for (i in 1:num_sim) {
+    Y1 <- dist_func(n)         
+    Y2 <- dist_func(n)         
+    Y <- c(Y1, Y2)
+    X <- factor(c(rep("A", n), rep("B", n)))
+    
+    # Permutation t-test
+    p.t[i] <- pvalue(oneway_test(Y ~ X, 
+                                 distribution = approximate(nresample=9999)))
+    # Permutation median.test
+    p.medtest[i] <- median.test(Y1, Y2)
+    # Wilcoxon test
+    p.wmw[i] <- wilcox.test(Y1, Y2)$p.value
+  }
+  
+  # Power for each test (alpha = 0.05)
+  type_I_error <- c(mean(p.t < .05), mean(p.medtest < .05), mean(p.wmw < .05))
+  type_I_error 
+}
+
+# Distribution functions
+  dist_funcs <- list(
+    exp = function(n) rexp(n),
+    t3 = function(n) rt(n, df = 3),
+    laplace = function(n) rlaplace(n),
+    t5 = function(n) rt(n, df = 5),
+    logistic = function(n) rlogis(n),
+    normal = function(n) rnorm(n),
+    uniform = function(n) runif(n)
+  )
+  
+  # Simulation to each distribution
+   results_type1 <- sapply(names(dist_funcs), function(dist_name) {
+  simulation_type1(n = 20, dist_func = dist_funcs[[dist_name]])
+})
+  
+results_type1_df <- as.data.frame(t(results_type1))
+colnames(results_type1_df) <- c("Permutation t-test", "Permutation median test", "wilcoxon Mann-Whitney")
+```
+
+```{r graph}
+# Reshape the data to long format
+results_type1_df$Distribution <- rownames(results_type1_df)
+results_type1_long <- melt(results_type1_df, id.vars = "Distribution", variable.name = "Test", value.name = "Power")
+
+ggplot(results_type1_long, aes(x = Distribution, y = Power, fill = Test)) + 
+  geom_bar(stat = "identity", position = "dodge") + 
+  # facet_wrap(~ GroupSize) +  # Separate plots for each group size +    
+  labs(x = NULL, y = "Power (%)") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "top") + 
+  scale_fill_manual(values = c("black", "gray", "lightgrey")) + 
+  coord_flip()
+```
+
+## Question 5
+
+
+## Question 6
+
+We initially did everything individually. Once both were done, we compared our answers and reported the findings into the Rmarkdown file. 
+
+## Appendix
+
+The following formulas and the chosen parameter values were all based on Wikipedia´s information. We double-checked that all the information used for the distributions was indeed accurate in Wasserman (2004) and StatisticsLibreTexts:
+
+$\text{Var}[Exp(1)] = \frac{1}{\lambda^2} = 1 \quad (\lambda = 1)$
+
+$\text{Var}[t_3] = \frac{\text{df}}{\text{df} - 2} = \frac{3}{3 - 2} = 3$
+
+$\text{Var}[\text{Laplace}(0,1)] = 2 \times \text{b}^2 = 2 \times 1^2 = 2 \quad (\text{b} = 1)$
+
+$\text{Var}[t_5] = \frac{\text{df}}{\text{df} - 2} = \frac{5}{5 - 2} = \frac{5}{3}$
+
+$\text{Var}[\text{Logistic}(0,1)] = \frac{\pi^2 \times \text{s}^2}{3} = \frac{\pi^2}{3} \quad (\text{s} = 1)$
+
+$\text{Var}[N(0,1)] = 1$
+
+$\text{Var}[\text{Uniform}(0,1)] = \frac{(b - a)^2}{12} = \frac{(1 - 0)^2}{12} = \frac{1}{12}$
+
+
+
+
